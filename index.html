@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AR Test</title>
+<style>
+body { margin:0; overflow:hidden; background:black; }
+video, canvas {
+  position:absolute;
+  top:0;
+  left:0;
+  width:100vw;
+  height:100vh;
+  object-fit:cover;
+}
+#msg{
+  position:absolute;
+  top:50%;
+  width:100%;
+  text-align:center;
+  color:white;
+  font-size:20px;
+  font-family:sans-serif;
+}
+</style>
+</head>
+<body>
+
+<div id="msg">Tap screen to start camera</div>
+
+<video id="video" playsinline autoplay muted></video>
+<canvas id="canvas"></canvas>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const msg = document.getElementById("msg");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let started = false;
+
+async function startCamera(){
+  if(started) return;
+  started = true;
+
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:"environment" },
+      audio:false
+    });
+
+    video.srcObject = stream;
+    await video.play();
+
+    msg.style.display="none";
+    draw();
+
+  }catch(e){
+    msg.innerText="Camera blocked or not supported.";
+  }
+}
+
+document.body.addEventListener("click", startCamera);
+
+function draw(){
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+
+  // simple center marker
+  ctx.beginPath();
+  ctx.arc(canvas.width/2, canvas.height/2, 20, 0, 2*Math.PI);
+  ctx.strokeStyle="lime";
+  ctx.lineWidth=4;
+  ctx.stroke();
+
+  requestAnimationFrame(draw);
+}
+</script>
+
+</body>
+</html>
