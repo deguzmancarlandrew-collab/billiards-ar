@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Billiards AR Lite</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <script async src="https://docs.opencv.org/4.x/opencv.min.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+    }
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    #loading {
+      position: absolute;
+      color: white;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: Arial;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading">Loading AR...</div>
+
+<video id="video" autoplay playsinline style="display:none;"></video>
+<canvas id="canvas"></canvas>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const loading = document.getElementById('loading');
+
+let cap;
+let processingWidth = 320;   // LOWER = FASTER
+let processingHeight = 240;
+
+navigator.mediaDevices.getUserMedia({
+  video: { facingMode: "environment" }
+}).then(stream => {
+  video.srcObject = stream;
+});
+
+// Wait for OpenCV
+function waitForCV() {
+  if (typeof cv !== "undefined") {
+    video.onloadedmetadata = start;
+  } else {
+    setTimeout(waitForCV, 100);
+  }
+}
+waitForCV();
+
+function start() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  cap = new cv.VideoCapture(video);
+  loading.style.display = "none";
+  requestAnimationFrame(processFrame);
+}
+
+function processFrame() {
+
+  if (!video.videoWidth) {
+    requestAnimationFrame(processFrame);
+    return;
+  }
+
+  let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+  let resized = new cv.Mat();
+  let gray = new cv.Mat();
+  let circles = new cv.Mat();
+
+  cap.read(src);
+
+  // Resize (big performance boost)
+  cv.resize(src, resized, new cv.Size(processingWidth, processingHeight));
+
+  cv.cvtColor(resized, gray, cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray, gray, new cv.Size(5,5), 0);
+
+  cv.HoughCircles(
+    gray,
+    circles,
+    cv.HOUGH_GRADIENT,
+    1,
+    80,
+    100,
+    25,
+    10,
+    40
+  );
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  if (circles.rows > 0) {
+
+    let x = circles.data32F[0];
+    let y = circles.data32F[1];
+    let radius = circles.data32F[2];
+
+    let scaleX = canvas.width / processingWidth;
+    let scaleY = canvas.height / processingHeight;
+
+    x *= scaleX;
+    y *= scaleY;
+    radius *= scaleX;
+
+    // Draw ball
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, 2*Math.PI);
+    ctx.strokeStyle = "lime";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Aim direction (slight upward angle)
+    let dirX = 1;
+    let dirY = -0.3;
+
+    let len = Math.hypot(dirX, dirY);
+    dirX /= len;
+    dirY /= len;
+
+    let length = 2000;
+    let endX = x + dirX * length;
+    let endY = y + dirY * length;
+
+    // Draw AR line
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(endX, endY);
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+
+  src.delete();
+  resized.delete();
+  gray.delete();
+  circles.delete();
+
+  requestAnimationFrame(processFrame);
+}
+</script>
+
+</body>
+</html>
