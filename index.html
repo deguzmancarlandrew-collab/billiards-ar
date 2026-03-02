@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Billiards AR Aim Assist</title>
+  <title>Billiards AR Lite</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+  <script async src="https://docs.opencv.org/4.x/opencv.min.js"></script>
 
   <style>
     html, body {
@@ -12,13 +12,11 @@
       overflow: hidden;
       background: black;
     }
-
     canvas {
       position: absolute;
       top: 0;
       left: 0;
     }
-
     #loading {
       position: absolute;
       color: white;
@@ -31,7 +29,7 @@
 </head>
 <body>
 
-<div id="loading">Loading AR System...</div>
+<div id="loading">Loading AR...</div>
 
 <video id="video" autoplay playsinline style="display:none;"></video>
 <canvas id="canvas"></canvas>
@@ -43,30 +41,36 @@ const ctx = canvas.getContext('2d');
 const loading = document.getElementById('loading');
 
 let cap;
-let processingWidth = 640;
-let processingHeight = 480;
+let processingWidth = 320;   // LOWER = FASTER
+let processingHeight = 240;
 
 navigator.mediaDevices.getUserMedia({
-  video: {
-    facingMode: "environment",
-    width: { ideal: 1280 },
-    height: { ideal: 720 }
-  }
+  video: { facingMode: "environment" }
 }).then(stream => {
   video.srcObject = stream;
 });
 
-video.addEventListener('loadedmetadata', () => {
+// Wait for OpenCV
+function waitForCV() {
+  if (typeof cv !== "undefined") {
+    video.onloadedmetadata = start;
+  } else {
+    setTimeout(waitForCV, 100);
+  }
+}
+waitForCV();
+
+function start() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   cap = new cv.VideoCapture(video);
   loading.style.display = "none";
   requestAnimationFrame(processFrame);
-});
+}
 
 function processFrame() {
 
-  if (!cv || !cv.Mat || !video.videoWidth) {
+  if (!video.videoWidth) {
     requestAnimationFrame(processFrame);
     return;
   }
@@ -78,22 +82,22 @@ function processFrame() {
 
   cap.read(src);
 
-  // Resize for better performance on phone
+  // Resize (big performance boost)
   cv.resize(src, resized, new cv.Size(processingWidth, processingHeight));
 
   cv.cvtColor(resized, gray, cv.COLOR_RGBA2GRAY);
-  cv.medianBlur(gray, gray, 5);
+  cv.GaussianBlur(gray, gray, new cv.Size(5,5), 0);
 
   cv.HoughCircles(
     gray,
     circles,
     cv.HOUGH_GRADIENT,
     1,
+    80,
     100,
-    100,
-    30,
-    15,
-    60
+    25,
+    10,
+    40
   );
 
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -104,7 +108,6 @@ function processFrame() {
     let y = circles.data32F[1];
     let radius = circles.data32F[2];
 
-    // Scale back to screen size
     let scaleX = canvas.width / processingWidth;
     let scaleY = canvas.height / processingHeight;
 
@@ -112,71 +115,32 @@ function processFrame() {
     y *= scaleY;
     radius *= scaleX;
 
-    // Draw detected ball
+    // Draw ball
     ctx.beginPath();
-    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+    ctx.arc(x, y, radius, 0, 2*Math.PI);
     ctx.strokeStyle = "lime";
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // ===== AIM VECTOR =====
+    // Aim direction (slight upward angle)
     let dirX = 1;
-    let dirY = -0.4;
+    let dirY = -0.3;
 
-    let length = Math.sqrt(dirX*dirX + dirY*dirY);
-    dirX /= length;
-    dirY /= length;
+    let len = Math.hypot(dirX, dirY);
+    dirX /= len;
+    dirY /= len;
 
-    let lineLength = 2000;
+    let length = 2000;
+    let endX = x + dirX * length;
+    let endY = y + dirY * length;
 
-    let endX = x + dirX * lineLength;
-    let endY = y + dirY * lineLength;
-
-    let hitX = endX;
-    let hitY = endY;
-
-    let normalX = 0;
-    let normalY = 0;
-
-    if (endX > canvas.width) {
-      hitX = canvas.width;
-      normalX = -1;
-    }
-    if (endX < 0) {
-      hitX = 0;
-      normalX = 1;
-    }
-    if (endY < 0) {
-      hitY = 0;
-      normalY = 1;
-    }
-    if (endY > canvas.height) {
-      hitY = canvas.height;
-      normalY = -1;
-    }
-
-    // Draw main AR line
+    // Draw AR line
     ctx.beginPath();
     ctx.moveTo(x, y);
-    ctx.lineTo(hitX, hitY);
+    ctx.lineTo(endX, endY);
     ctx.strokeStyle = "red";
     ctx.lineWidth = 4;
     ctx.stroke();
-
-    // Reflection
-    if (normalX !== 0 || normalY !== 0) {
-
-      let dot = dirX*normalX + dirY*normalY;
-      let refX = dirX - 2 * dot * normalX;
-      let refY = dirY - 2 * dot * normalY;
-
-      ctx.beginPath();
-      ctx.moveTo(hitX, hitY);
-      ctx.lineTo(hitX + refX * 800, hitY + refY * 800);
-      ctx.strokeStyle = "yellow";
-      ctx.lineWidth = 3;
-      ctx.stroke();
-    }
   }
 
   src.delete();
