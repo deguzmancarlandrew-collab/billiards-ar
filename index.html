@@ -1,24 +1,25 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Billiards AR Fast</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-
+  <title>Fast Billiards AR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: black;
-    }
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
+    body { margin:0; overflow:hidden; background:black; }
+    canvas { position:absolute; top:0; left:0; }
+    #msg {
+      position:absolute;
+      color:white;
+      top:50%;
+      width:100%;
+      text-align:center;
+      font-size:20px;
+      font-family:sans-serif;
     }
   </style>
 </head>
 <body>
+
+<div id="msg">Starting camera...</div>
 
 <video id="video" autoplay playsinline style="display:none;"></video>
 <canvas id="canvas"></canvas>
@@ -27,60 +28,69 @@
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const msg = document.getElementById("msg");
 
 let ballX, ballY;
 let aimX = 1;
-let aimY = -0.3;
+let aimY = 0;
 
 navigator.mediaDevices.getUserMedia({
-  video: { facingMode: "environment" }
+  video: { facingMode: { exact: "environment" } }
 }).then(stream => {
+
+  msg.style.display = "none";
   video.srcObject = stream;
+
+}).catch(err => {
+
+  msg.innerText = "Camera error. Check permission.";
+
+  // fallback to any camera
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then(stream=>{
+      msg.style.display = "none";
+      video.srcObject = stream;
+    })
+    .catch(()=>{
+      msg.innerText = "Camera blocked.";
+    });
 });
 
 video.addEventListener("loadedmetadata", () => {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 
-  // Assume cue ball is center (manual adjust later)
   ballX = canvas.width / 2;
   ballY = canvas.height / 2;
 
   requestAnimationFrame(draw);
 });
 
-// TOUCH CONTROL (drag to aim)
 canvas.addEventListener("touchmove", (e) => {
-  let touch = e.touches[0];
-  let dx = touch.clientX - ballX;
-  let dy = touch.clientY - ballY;
-
+  let t = e.touches[0];
+  let dx = t.clientX - ballX;
+  let dy = t.clientY - ballY;
   let len = Math.hypot(dx, dy);
-  aimX = dx / len;
-  aimY = dy / len;
+  if(len > 0){
+    aimX = dx/len;
+    aimY = dy/len;
+  }
 });
 
-function draw() {
+function draw(){
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  // Draw cue ball position marker
   ctx.beginPath();
-  ctx.arc(ballX, ballY, 20, 0, 2 * Math.PI);
-  ctx.strokeStyle = "lime";
-  ctx.lineWidth = 3;
+  ctx.arc(ballX,ballY,15,0,2*Math.PI);
+  ctx.strokeStyle="lime";
+  ctx.lineWidth=3;
   ctx.stroke();
 
-  // Main line
-  let length = 2000;
-  let endX = ballX + aimX * length;
-  let endY = ballY + aimY * length;
-
   ctx.beginPath();
-  ctx.moveTo(ballX, ballY);
-  ctx.lineTo(endX, endY);
-  ctx.strokeStyle = "red";
-  ctx.lineWidth = 4;
+  ctx.moveTo(ballX,ballY);
+  ctx.lineTo(ballX+aimX*2000, ballY+aimY*2000);
+  ctx.strokeStyle="red";
+  ctx.lineWidth=4;
   ctx.stroke();
 
   requestAnimationFrame(draw);
