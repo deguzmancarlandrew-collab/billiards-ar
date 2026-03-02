@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Billiards AR Lite</title>
+  <title>Billiards AR Fast</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <script async src="https://docs.opencv.org/4.x/opencv.min.js"></script>
 
   <style>
     html, body {
@@ -17,32 +16,21 @@
       top: 0;
       left: 0;
     }
-    #loading {
-      position: absolute;
-      color: white;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-family: Arial;
-    }
   </style>
 </head>
 <body>
-
-<div id="loading">Loading AR...</div>
 
 <video id="video" autoplay playsinline style="display:none;"></video>
 <canvas id="canvas"></canvas>
 
 <script>
-const video = document.getElementById('video');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const loading = document.getElementById('loading');
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
-let cap;
-let processingWidth = 320;   // LOWER = FASTER
-let processingHeight = 240;
+let ballX, ballY;
+let aimX = 1;
+let aimY = -0.3;
 
 navigator.mediaDevices.getUserMedia({
   video: { facingMode: "environment" }
@@ -50,105 +38,52 @@ navigator.mediaDevices.getUserMedia({
   video.srcObject = stream;
 });
 
-// Wait for OpenCV
-function waitForCV() {
-  if (typeof cv !== "undefined") {
-    video.onloadedmetadata = start;
-  } else {
-    setTimeout(waitForCV, 100);
-  }
-}
-waitForCV();
-
-function start() {
+video.addEventListener("loadedmetadata", () => {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
-  cap = new cv.VideoCapture(video);
-  loading.style.display = "none";
-  requestAnimationFrame(processFrame);
-}
 
-function processFrame() {
+  // Assume cue ball is center (manual adjust later)
+  ballX = canvas.width / 2;
+  ballY = canvas.height / 2;
 
-  if (!video.videoWidth) {
-    requestAnimationFrame(processFrame);
-    return;
-  }
+  requestAnimationFrame(draw);
+});
 
-  let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
-  let resized = new cv.Mat();
-  let gray = new cv.Mat();
-  let circles = new cv.Mat();
+// TOUCH CONTROL (drag to aim)
+canvas.addEventListener("touchmove", (e) => {
+  let touch = e.touches[0];
+  let dx = touch.clientX - ballX;
+  let dy = touch.clientY - ballY;
 
-  cap.read(src);
+  let len = Math.hypot(dx, dy);
+  aimX = dx / len;
+  aimY = dy / len;
+});
 
-  // Resize (big performance boost)
-  cv.resize(src, resized, new cv.Size(processingWidth, processingHeight));
-
-  cv.cvtColor(resized, gray, cv.COLOR_RGBA2GRAY);
-  cv.GaussianBlur(gray, gray, new cv.Size(5,5), 0);
-
-  cv.HoughCircles(
-    gray,
-    circles,
-    cv.HOUGH_GRADIENT,
-    1,
-    80,
-    100,
-    25,
-    10,
-    40
-  );
+function draw() {
 
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  if (circles.rows > 0) {
+  // Draw cue ball position marker
+  ctx.beginPath();
+  ctx.arc(ballX, ballY, 20, 0, 2 * Math.PI);
+  ctx.strokeStyle = "lime";
+  ctx.lineWidth = 3;
+  ctx.stroke();
 
-    let x = circles.data32F[0];
-    let y = circles.data32F[1];
-    let radius = circles.data32F[2];
+  // Main line
+  let length = 2000;
+  let endX = ballX + aimX * length;
+  let endY = ballY + aimY * length;
 
-    let scaleX = canvas.width / processingWidth;
-    let scaleY = canvas.height / processingHeight;
+  ctx.beginPath();
+  ctx.moveTo(ballX, ballY);
+  ctx.lineTo(endX, endY);
+  ctx.strokeStyle = "red";
+  ctx.lineWidth = 4;
+  ctx.stroke();
 
-    x *= scaleX;
-    y *= scaleY;
-    radius *= scaleX;
-
-    // Draw ball
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, 2*Math.PI);
-    ctx.strokeStyle = "lime";
-    ctx.lineWidth = 3;
-    ctx.stroke();
-
-    // Aim direction (slight upward angle)
-    let dirX = 1;
-    let dirY = -0.3;
-
-    let len = Math.hypot(dirX, dirY);
-    dirX /= len;
-    dirY /= len;
-
-    let length = 2000;
-    let endX = x + dirX * length;
-    let endY = y + dirY * length;
-
-    // Draw AR line
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(endX, endY);
-    ctx.strokeStyle = "red";
-    ctx.lineWidth = 4;
-    ctx.stroke();
-  }
-
-  src.delete();
-  resized.delete();
-  gray.delete();
-  circles.delete();
-
-  requestAnimationFrame(processFrame);
+  requestAnimationFrame(draw);
 }
 </script>
 
