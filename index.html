@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Billiards AR Aim Assist</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    #loading {
+      position: absolute;
+      color: white;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: Arial;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading">Loading AR System...</div>
+
+<video id="video" autoplay playsinline style="display:none;"></video>
+<canvas id="canvas"></canvas>
+
+<script>
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const loading = document.getElementById('loading');
+
+let cap;
+let processingWidth = 640;
+let processingHeight = 480;
+
+navigator.mediaDevices.getUserMedia({
+  video: {
+    facingMode: "environment",
+    width: { ideal: 1280 },
+    height: { ideal: 720 }
+  }
+}).then(stream => {
+  video.srcObject = stream;
+});
+
+video.addEventListener('loadedmetadata', () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  cap = new cv.VideoCapture(video);
+  loading.style.display = "none";
+  requestAnimationFrame(processFrame);
+});
+
+function processFrame() {
+
+  if (!cv || !cv.Mat || !video.videoWidth) {
+    requestAnimationFrame(processFrame);
+    return;
+  }
+
+  let src = new cv.Mat(video.videoHeight, video.videoWidth, cv.CV_8UC4);
+  let resized = new cv.Mat();
+  let gray = new cv.Mat();
+  let circles = new cv.Mat();
+
+  cap.read(src);
+
+  // Resize for better performance on phone
+  cv.resize(src, resized, new cv.Size(processingWidth, processingHeight));
+
+  cv.cvtColor(resized, gray, cv.COLOR_RGBA2GRAY);
+  cv.medianBlur(gray, gray, 5);
+
+  cv.HoughCircles(
+    gray,
+    circles,
+    cv.HOUGH_GRADIENT,
+    1,
+    100,
+    100,
+    30,
+    15,
+    60
+  );
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  if (circles.rows > 0) {
+
+    let x = circles.data32F[0];
+    let y = circles.data32F[1];
+    let radius = circles.data32F[2];
+
+    // Scale back to screen size
+    let scaleX = canvas.width / processingWidth;
+    let scaleY = canvas.height / processingHeight;
+
+    x *= scaleX;
+    y *= scaleY;
+    radius *= scaleX;
+
+    // Draw detected ball
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+    ctx.strokeStyle = "lime";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // ===== AIM VECTOR =====
+    let dirX = 1;
+    let dirY = -0.4;
+
+    let length = Math.sqrt(dirX*dirX + dirY*dirY);
+    dirX /= length;
+    dirY /= length;
+
+    let lineLength = 2000;
+
+    let endX = x + dirX * lineLength;
+    let endY = y + dirY * lineLength;
+
+    let hitX = endX;
+    let hitY = endY;
+
+    let normalX = 0;
+    let normalY = 0;
+
+    if (endX > canvas.width) {
+      hitX = canvas.width;
+      normalX = -1;
+    }
+    if (endX < 0) {
+      hitX = 0;
+      normalX = 1;
+    }
+    if (endY < 0) {
+      hitY = 0;
+      normalY = 1;
+    }
+    if (endY > canvas.height) {
+      hitY = canvas.height;
+      normalY = -1;
+    }
+
+    // Draw main AR line
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(hitX, hitY);
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    // Reflection
+    if (normalX !== 0 || normalY !== 0) {
+
+      let dot = dirX*normalX + dirY*normalY;
+      let refX = dirX - 2 * dot * normalX;
+      let refY = dirY - 2 * dot * normalY;
+
+      ctx.beginPath();
+      ctx.moveTo(hitX, hitY);
+      ctx.lineTo(hitX + refX * 800, hitY + refY * 800);
+      ctx.strokeStyle = "yellow";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+  }
+
+  src.delete();
+  resized.delete();
+  gray.delete();
+  circles.delete();
+
+  requestAnimationFrame(processFrame);
+}
+</script>
+
+</body>
+</html>
